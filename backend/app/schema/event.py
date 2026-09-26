@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel
+import uuid
 
 class EventCreate(BaseModel):
     name: str
@@ -7,7 +8,7 @@ class EventCreate(BaseModel):
     start_time: datetime
 
 class EventResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     name: str
     venue: str
     start_time: datetime
