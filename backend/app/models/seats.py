@@ -17,3 +17,8 @@ class Seat(Base):
         String(10),
         nullable=False
     )
+    status: Mapped[str] = mapped_column( # Held Available and Reserved
+        String(20),
+        default="AVAILABLE",
+        nullable=False
+    )
