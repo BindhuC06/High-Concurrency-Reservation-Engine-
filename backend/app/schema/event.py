@@ -16,5 +16,5 @@ class EventResponse(BaseModel):
         from_attributes = True
 
 '''
-this function / schema specifies the format of db data sent or recived by api
+this function / schema specifies the format of data in the database sent or recived by api
 '''
