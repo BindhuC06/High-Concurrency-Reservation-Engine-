@@ -27,7 +27,7 @@ def create_reservation(
 
     seat = db.query(Seat).filter(
         Seat.id == reservation.seat_id,
-        Seat.event_id == reservation.event_id).first()
+        Seat.event_id == reservation.event_id).with_for_update().first()
 
     if seat is None:
         raise HTTPException(
