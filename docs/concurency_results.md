@@ -26,3 +26,23 @@ For a single seat:
 `successful reservations <= 1`
 
 The invariant is successfully held for all tested concurrency levels.
+
+
+| Requests | Successful | Conflicts | Total Time (s) | Requests/sec |
+|----------|------------|-----------|----------------|--------------|
+| 10       | 1          | 9         | 0.703          | 14.22        |
+| 50       | 1          | 49        | 0.858          | 58.29        |
+| 100      | 1          | 99        | 1.074          | 93.09        |
+| 500      | 1          | 499       | 3.438          | 145.42       |
+
+### Observation
+
+Across all contention tests, exactly one reservation succeeded
+while all other concurrent attempts were rejected.
+
+This confirms that the reservation endpoint preserves the
+single-booking invariant under concurrent access.
+
+The 500-request test initially encountered an HTTP client
+connection-pool timeout. Increasing the HTTPX connection pool
+allowed the full benchmark to execute successfully.
