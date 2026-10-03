@@ -56,3 +56,80 @@ def create_reservation(
     db.refresh(new_reservation)
 
     return new_reservation
+
+@router.post("/{reservation_id}/confirm", response_model=ReservationResponse)
+def confirm_reservation(
+    reservation_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+
+    if reservation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Reservation not found"
+        )
+
+    if reservation.status != "HELD":
+        raise HTTPException(
+            status_code=409,
+            detail="Reservation cannot be confirmed"
+        )
+
+    if reservation.expires_at and reservation.expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=409,
+            detail="Reservation hold has expired"
+        )
+
+    seat = db.query(Seat).filter(
+        Seat.id == reservation.seat_id
+    ).first()
+
+    if seat is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Seat not found"
+        )
+
+    seat.status = "BOOKED"
+    reservation.status = "CONFIRMED"
+
+    db.commit()
+    db.refresh(reservation)
+
+    return reservation
+
+@router.post("/{reservation_id}/cancel", response_model=ReservationResponse)
+def cancel_reservation(
+    reservation_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+
+    if reservation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Reservation not found"
+        )
+
+    if reservation.status != "HELD":
+        raise HTTPException(
+            status_code=409,
+            detail="Reservation cannot be cancelled"
+        )
+
+    seat = db.query(Seat).filter(Seat.id == reservation.seat_id).first()
+
+    if seat is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Seat not found"
+        )
+
+    seat.status = "AVAILABLE"
+    reservation.status = "CANCELLED"
+    db.commit()
+    db.refresh(reservation)
+
+    return reservation
