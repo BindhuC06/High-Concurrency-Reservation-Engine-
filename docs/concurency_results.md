@@ -21,7 +21,7 @@ Verify that multiple concurrent users cannot successfully reserve the same seat.
 
 ## Invariant
 
-For a single seat:
+### For a single seat:
 
 `successful reservations <= 1`
 
@@ -46,3 +46,14 @@ single-booking invariant under concurrent access.
 The 500-request test initially encountered an HTTP client
 connection-pool timeout. Increasing the HTTPX connection pool
 allowed the full benchmark to execute successfully.
+
+
+### Multi-seat concurrency
+
+100 users → 10 seats
+→ 10 successes
+→ 90 conflicts
+
+| Requests | Seats | Successful | Conflicts | Time | RPS |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 10 | **10** | **90** | 1.6255s | **61.52** |
