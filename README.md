@@ -60,21 +60,50 @@ Reservations use PostgreSQL row-level locking:
 This prevents two concurrent requests from successfully reserving
 the same seat.
 
-Benchmark
-Single-seat contention test:
+## Benchmark
 
+### Single-seat contention
 
-| Requests | Success | Conflicts | Time(sec) | RPS |
+500 concurrent requests competing for the same seat:
+
+| Requests | Successful | Conflicts | Total Time | Requests/sec |
 |---:|---:|---:|---:|---:|
-| 10 | 1 | 9 | 0.703 | 14.22 |
-| 50 | 1 | 49 | 0.858 | 58.29 |
-| 100 | 1 | 99 | 1.074 | 93.09 |
-| 500 | 1 | 499 | 3.438 | 145.42 |
+| 10 | 1 | 9 | 0.703s | 14.22 |
+| 50 | 1 | 49 | 0.858s | 58.29 |
+| 100 | 1 | 99 | 1.074s | 93.09 |
+| 500 | 1 | 499 | 3.438s | 145.42 |
 
+**Result:** Exactly one reservation succeeded in every test, confirming that
+the same seat cannot be successfully reserved by multiple concurrent users.
+
+### Multi-seat concurrency
+
+100 concurrent requests distributed across 10 seats:
+
+| Requests | Seats | Successful | Conflicts | Total Time | Requests/sec |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 10 | 10 | 90 | 1.6255s | 61.52 |
+
+### Latency
+
+100 concurrent requests distributed across 10 seats:
+
+| Metric | Result |
+|---|---:|
+| Total requests | 100 |
+| Successful | 10 |
+| Conflicts | 90 |
+| Throughput | 68.20 req/s |
+| Average latency | 705.66 ms |
+| P50 latency | 709.35 ms |
+| P95 latency | 858.22 ms |
+| P99 latency | 875.23 ms |
+
+> These are local development benchmarks. The contention tests measure
+> concurrency correctness and behavior under resource contention, not
+> production system capacity.
 
 Result: Exactly one reservation succeeded in every test.
-Note: These are local single-seat contention tests, not general
-system throughput benchmarks.
 
 Run Locally
 ```
@@ -92,8 +121,8 @@ http://127.0.0.1:8000/docs
 - [x] Reservation lifecycle
 - [x] Concurrency protection
 - [x] Concurrency benchmarks
-- [ ] Realistic multi-seat load testing
-- [ ] Latency metrics
+- [x] Realistic multi-seat load testing
+- [x] Latency metrics
 - [ ] Redis
 - [ ] Background workers
 - [ ] Docker & CI/CD

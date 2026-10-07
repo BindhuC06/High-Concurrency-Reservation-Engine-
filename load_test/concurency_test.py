@@ -1,4 +1,5 @@
 import uuid,time,httpx,asyncio, sys
+import statistics
 
 URL = "http://127.0.0.1:8000/reservations/"
 
@@ -18,14 +19,27 @@ SEAT_IDS = [
 
 NUMBER_OF_REQUESTS = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 
-async def reserve_seat(client, user_id,seat_id):
+async def reserve_seat(client, user_id, seat_id):
     payload = {
         "user_id": str(user_id),
         "event_id": EVENT_ID,
         "seat_id": seat_id
     }
+    start = time.perf_counter()
     response = await client.post(URL, json=payload)
-    return response.status_code, response.json()
+    end = time.perf_counter()
+    latency = end - start
+    return response.status_code, response.json(), latency
+
+def percentile(data, p):
+    k = (len(data) - 1) * p
+    f = int(k)
+    c = f + 1
+
+    if c >= len(data):
+        return data[f]
+
+    return data[f] + (k - f) * (data[c] - data[f])
 
 async def main():
     start_time =time.perf_counter()
@@ -46,23 +60,28 @@ async def main():
 
     end_time=time.perf_counter()
 
-    successful = [
-        result for result in results
-        if result[0] == 200
-    ]
+    successful = [ result for result in results if result[0] == 200]
+    conflicts = [ result for result in results if result[0] == 409]
+    latencies = [ result[2] for result in results]
 
-    conflicts = [
-        result for result in results
-        if result[0] == 409
-    ]
     total_time=end_time-start_time
     requests_per_second=len(results)/total_time
+    latencies.sort()
+
+    p50 = statistics.median(latencies)
+    average_latency = statistics.mean(latencies)
+    p95 = percentile(latencies, 0.95)
+    p99 = percentile(latencies, 0.99)
 
     print("Total requests:", len(results))
     print("Successful reservations:", len(successful))
     print("Conflicts:", len(conflicts))
     print(f"Total time : {total_time:.4f} seconds.")
     print(f"requests per second : {requests_per_second:.4f}.")
+    print(f"Average latency : {average_latency * 1000:.2f} ms")
+    print(f"P50 latency     : {p50 * 1000:.2f} ms")
+    print(f"P95 latency     : {p95 * 1000:.2f} ms")
+    print(f"P99 latency     : {p99 * 1000:.2f} ms")
 
 if __name__ == "__main__":
     asyncio.run(main())

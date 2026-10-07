@@ -57,3 +57,30 @@ allowed the full benchmark to execute successfully.
 | Requests | Seats | Successful | Conflicts | Time | RPS |
 |---:|---:|---:|---:|---:|---:|
 | 100 | 10 | **10** | **90** | 1.6255s | **61.52** |
+
+### Latency
+
+100 concurrent requests distributed across 10 seats:
+
+| Metric | Result |
+|---|---:|
+| Total requests | 100 |
+| Successful | 10 |
+| Conflicts | 90 |
+| Throughput | 68.20 req/s |
+| Average latency | 705.66 ms |
+| P50 latency | 709.35 ms |
+| P95 latency | 858.22 ms |
+| P99 latency | 875.23 ms |
+
+### Observation
+
+The P50 latency was approximately 709 ms, while P95 and P99 were
+approximately 858 ms and 875 ms respectively.
+
+The relatively small difference between P95 and P99 indicates that the
+tail latency did not increase dramatically under this workload.
+
+These measurements were collected on a local development environment
+and should be treated as a baseline rather than a production performance
+claim.
