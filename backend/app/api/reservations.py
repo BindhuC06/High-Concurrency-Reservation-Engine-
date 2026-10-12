@@ -24,10 +24,7 @@ def create_reservation(
             status_code=404,
             detail="Event not found"
         )
-
-    seat = db.query(Seat).filter(
-        Seat.id == reservation.seat_id,
-        Seat.event_id == reservation.event_id).with_for_update().first()
+    seat = db.query(Seat).filter(Seat.id == reservation.seat_id,Seat.event_id == reservation.event_id).with_for_update().first()
 
     if seat is None:
         raise HTTPException(

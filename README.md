@@ -105,6 +105,74 @@ the same seat cannot be successfully reserved by multiple concurrent users.
 
 Result: Exactly one reservation succeeded in every test.
 
+## Reservation Latency Profiling
+
+### Objective
+
+Investigate why reservation endpoint latency increases under concurrent load. Now, the objective is to identify potential bottlenecks in database connection acquisition, query execution, row locking, and transaction commits without modifying the reservation logic.
+
+#### Test 1 — Single-request baseline - One reservation request against an available seat.
+
+| Metric | Result |
+|---|---:|
+| Event lookup | 2.51 ms |
+| Seat lookup + lock query | 1.80 ms |
+| Database commit | 11.42 ms |
+| Total endpoint time | 17.32 ms |
+
+**Observation:** The endpoint completed in approximately 17 ms in this run, establishing a local single-request reference point.
+
+#### Test 2 — Concurrent reservations across multiple seats - One event with distinct available seats, with 5 and 10 concurrent requests.
+
+| Requests | Successful reservations | Average client latency | Throughput |
+|---:|---:|---:|---:|
+| 5 | 5 | 46.11 ms | 14.98 RPS |
+| 10 | 10 | 104.50 ms | 21.82 RPS |
+
+The 10-request run reported P50 latency of 112.04 ms and P95 latency of 154.17 ms.
+
+**Observation:** Latency increased with concurrency in these runs. These results are local measurements and may vary between runs.
+
+#### Test 3 — Event lookup profiling - Added timing around the event query in `create_reservation()`.
+
+**Observations:**
+- Some concurrent runs reported event lookup times of approximately 80–197 ms.
+- Other requests completed the same lookup in approximately 1–12 ms.
+- The single-request event lookup was approximately 2.51 ms.
+
+**Conclusion:** Event lookup time was highly variable under load. The measurements alone do not establish whether query execution, connection acquisition, or other scheduling overhead caused the variation.
+
+#### Test 4 — SQLAlchemy connection pool inspection - Inspected the SQLAlchemy engine and sampled pool statistics during concurrent requests.
+
+| Property | Observed value |
+|---|---|
+| Pool class | `QueuePool` |
+| Base pool size | 5 |
+| Checked-out connections during load | Up to 10 |
+| Observed overflow connections | Up to 5 |
+
+The default SQLAlchemy `QueuePool` configuration generally permits up to 10 overflow connections in addition to the base pool size, giving a maximum of 15 simultaneous connections under the default settings.
+
+**Observation:** The pool expanded beyond its base size during concurrent bursts. The samples did not establish that the pool was exhausted.
+
+#### Test 5 — Connection acquisition and connection lifecycle - Measured the time spent in `db.connection()` and temporarily logged SQLAlchemy connection creation and closure events.
+
+**Observations:**
+- Connection acquisition measurements reached approximately 80–214 ms in some concurrent runs.
+- Multiple new database connections were created during bursts.
+- Five connection-close events were observed in one run.
+- Overflow connections may be closed when returned to the pool; closure events alone do not demonstrate a connection leak.
+
+**Conclusion:** Connection acquisition and connection lifecycle warrant further investigation. However, the measured acquisition duration includes more than pure pool waiting time, so the root cause remains unconfirmed.
+
+### Overall Findings
+
+1. The reservation endpoint successfully processed the tested multi-seat workloads.
+2. Earlier single-seat contention tests demonstrated the expected single-winner behavior for competing reservations.
+3. Concurrent request latency was substantially higher than the single-request baseline in several runs.
+4. Connection acquisition, query execution, and commit timings varied under load.
+5. No definitive root cause for the latency increase has been established.
+
 Run Locally
 ```
 backend\venv\Scripts\activate
