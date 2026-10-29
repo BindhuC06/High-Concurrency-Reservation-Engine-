@@ -33,17 +33,13 @@ TestingSessionLocal = sessionmaker(
     autocommit=False,
 )
 
-
 @pytest.fixture(scope="session", autouse=True)
 def create_test_tables():
-
     from app.models.event import Event
     from app.models.seats import Seat
     from app.models.reservation import Reservation
-
     Base.metadata.create_all(bind=test_engine)
     yield
-    Base.metadata.drop_all(bind=test_engine)
     test_engine.dispose()
 
 
