@@ -49,6 +49,44 @@ def create_available_seat():
     finally:
         db.close()
 
+def create_event_with_seats(number_of_seats=10):
+    db = SessionLocalTest()
+    try:
+        event = Event(
+            name="Multi Seat Concurrency Test",
+            venue="Test Venue",
+            start_time=datetime.now(timezone.utc),
+        )
+
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+
+        seats = []
+
+        for i in range(number_of_seats):
+            seat = Seat(
+                event_id=event.id,
+                seat_number=f"M-{i + 1}",
+                status="AVAILABLE",
+            )
+            seats.append(seat)
+
+        db.add_all(seats)
+        db.commit()
+
+        for seat in seats:
+            db.refresh(seat)
+
+        return event.id, [seat.id for seat in seats]
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
 async def send_reservation(client, event_id, seat_id):
     payload = {
         "event_id": str(event_id),
@@ -56,6 +94,9 @@ async def send_reservation(client, event_id, seat_id):
         "user_id": str(uuid.uuid4()),
     }
     response = await client.post("/reservations/", json=payload)
+    #event not found error was observed
+    # if response.status_code == 404:
+    #     print("404 RESPONSE:", response.text)
     return response.status_code
 
 
@@ -85,3 +126,30 @@ async def run_same_seat_test():
 
 def test_concurrent_requests_for_same_seat():
     asyncio.run(run_same_seat_test())
+
+async def run_multiple_seats_test():
+    event_id, seat_ids = create_event_with_seats(10)
+
+    limits = httpx.Limits(
+        max_connections=20,
+        max_keepalive_connections=10,
+    )
+
+    async with httpx.AsyncClient(
+        base_url=BASE_URL,
+        limits=limits,
+        timeout=30.0,
+    ) as client:
+
+        statuses = await asyncio.gather(
+            *[
+                send_reservation(client, event_id, seat_id)
+                for seat_id in seat_ids
+            ]
+        )
+
+    assert statuses.count(200) == 10, statuses
+
+
+def test_concurrent_requests_for_different_seats():
+    asyncio.run(run_multiple_seats_test())
