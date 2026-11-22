@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models.event import Event
 from app.models.seats import Seat
+from app.models.reservation import Reservation
 
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -153,3 +154,54 @@ async def run_multiple_seats_test():
 
 def test_concurrent_requests_for_different_seats():
     asyncio.run(run_multiple_seats_test())
+
+async def run_stress_test():
+    event_id, seat_id = create_available_seat()
+
+    total_requests = 50
+
+    limits = httpx.Limits(
+        max_connections=50,
+        max_keepalive_connections=20,
+    )
+
+    async with httpx.AsyncClient(
+        base_url=BASE_URL,
+        limits=limits,
+        timeout=30.0,
+    ) as client:
+
+        statuses = await asyncio.gather(
+            *[
+                send_reservation(client, event_id, seat_id)
+                for _ in range(total_requests)
+            ]
+        )
+
+    # Verify API responses
+    assert statuses.count(200) == 1, statuses
+    assert statuses.count(409) == 49, statuses
+
+    # Verify database invariants
+    db = SessionLocalTest()
+
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+
+        reservations = (
+            db.query(Reservation)
+            .filter(Reservation.seat_id == seat_id)
+            .all()
+        )
+
+        assert seat is not None
+        assert seat.status == "HELD"
+
+        assert len(reservations) == 1
+        assert reservations[0].status == "HELD"
+
+    finally:
+        db.close()
+
+def test_stress_same_seat():
+    asyncio.run(run_stress_test())
