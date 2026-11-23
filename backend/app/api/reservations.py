@@ -14,23 +14,31 @@ router = APIRouter(
 )
 
 @router.post("/", response_model=ReservationResponse)
-def create_reservation(
-    reservation: ReservationCreate,
-    db: Session = Depends(get_db)
-):
+def create_reservation(reservation: ReservationCreate, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == reservation.event_id).first()
     if event is None:
         raise HTTPException(
             status_code=404,
             detail="Event not found"
         )
-    seat = db.query(Seat).filter(Seat.id == reservation.seat_id,Seat.event_id == reservation.event_id).with_for_update().first()
+    seat = db.query(Seat).filter(
+            Seat.id == reservation.seat_id,Seat.event_id == reservation.event_id
+        ).with_for_update().first()
 
     if seat is None:
         raise HTTPException(
             status_code=404,
             detail="Seat not found for this event"
         )
+
+    if seat.status == "HELD":
+        existing_reservation = db.query(Reservation).filter(
+            Reservation.seat_id == seat.id,
+            Reservation.status == "HELD"
+        ).first()
+
+        if existing_reservation:
+            existing_reservation.expire(seat)
 
     if seat.status != "AVAILABLE":
         raise HTTPException(

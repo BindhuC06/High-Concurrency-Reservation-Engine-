@@ -40,3 +40,9 @@ class Reservation(Base):
         DateTime,
         nullable=True
     )
+
+    def expire(self,seat):
+        if self.status == "HELD" and self.expires_at is not None and self.expires_at <= datetime.utcnow():
+            self.status = "EXPIRED"
+            seat.status="AVAILABLE"
+        
