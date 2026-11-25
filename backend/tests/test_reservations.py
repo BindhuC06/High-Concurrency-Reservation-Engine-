@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
+import requests
 from app.models.event import Event
 from app.models.seats import Seat
 from app.models.reservation import Reservation
@@ -310,5 +310,117 @@ def test_active_hold_cannot_be_stolen():
         assert seat.status == "HELD"
         assert reservation.status == "HELD"
 
+    finally:
+        db.close()
+
+def test_confirm_reservation():
+    event_id, seat_id = create_available_seat()
+
+    response = requests.post(
+        f"{BASE_URL}/reservations/",
+        json={
+            "user_id": str(uuid.uuid4()),
+            "event_id": str(event_id),
+            "seat_id": str(seat_id)
+        }
+    )
+
+    assert response.status_code == 200
+    reservation_id = response.json()["id"]
+
+    confirm_response = requests.post(
+        f"{BASE_URL}/reservations/{reservation_id}/confirm"
+    )
+
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "CONFIRMED"
+
+    db = SessionLocalTest()
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+        reservation = db.query(Reservation).filter(
+            Reservation.id == reservation_id
+        ).first()
+
+        assert seat.status == "BOOKED"
+        assert reservation.status == "CONFIRMED"
+    finally:
+        db.close()
+
+def test_cancel_reservation():
+    event_id, seat_id = create_available_seat()
+
+    response = requests.post(
+        f"{BASE_URL}/reservations/",
+        json={
+            "user_id": str(uuid.uuid4()),
+            "event_id": str(event_id),
+            "seat_id": str(seat_id)
+        }
+    )
+
+    assert response.status_code == 200
+    reservation_id = response.json()["id"]
+
+    cancel_response = requests.post(
+        f"{BASE_URL}/reservations/{reservation_id}/cancel"
+    )
+
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["status"] == "CANCELLED"
+
+    db = SessionLocalTest()
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+        reservation = db.query(Reservation).filter(
+            Reservation.id == reservation_id
+        ).first()
+
+        assert seat.status == "AVAILABLE"
+        assert reservation.status == "CANCELLED"
+    finally:
+        db.close()
+
+def test_confirm_expired_reservation():
+    event_id, seat_id, reservation_id = create_held_reservation(expired=True)
+
+    response = requests.post(
+        f"{BASE_URL}/reservations/{reservation_id}/confirm"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Reservation hold has expired"
+
+    db = SessionLocalTest()
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+        reservation = db.query(Reservation).filter(
+            Reservation.id == reservation_id
+        ).first()
+
+        assert seat.status == "AVAILABLE"
+        assert reservation.status == "EXPIRED"
+    finally:
+        db.close()
+
+def test_cancel_expired_reservation():
+    event_id, seat_id, reservation_id = create_held_reservation(expired=True)
+
+    response = requests.post(
+        f"{BASE_URL}/reservations/{reservation_id}/cancel"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Reservation hold has expired"
+
+    db = SessionLocalTest()
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+        reservation = db.query(Reservation).filter(
+            Reservation.id == reservation_id
+        ).first()
+
+        assert seat.status == "AVAILABLE"
+        assert reservation.status == "EXPIRED"
     finally:
         db.close()
