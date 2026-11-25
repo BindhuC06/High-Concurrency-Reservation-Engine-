@@ -1,7 +1,7 @@
 import asyncio
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -205,3 +205,110 @@ async def run_stress_test():
 
 def test_stress_same_seat():
     asyncio.run(run_stress_test())
+
+def create_held_reservation(expired=True):
+    event_id, seat_id = create_available_seat() #1 event 1 seat
+
+    db = SessionLocalTest()
+
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+        seat.status = "HELD"
+
+        expires_at = (
+            datetime.utcnow() - timedelta(minutes=1)
+            if expired
+            else datetime.utcnow() + timedelta(minutes=10)
+        )
+
+        reservation = Reservation(
+            user_id=uuid.uuid4(),
+            event_id=event_id,
+            seat_id=seat_id,
+            status="HELD",
+            expires_at=expires_at,
+        )
+
+        db.add(reservation)
+        db.commit()
+        db.refresh(reservation)
+
+        return event_id, seat_id, reservation.id
+
+    except Exception:
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+def test_expired_hold_can_be_rebooked():
+    event_id, seat_id, old_reservation_id = create_held_reservation(expired=True)
+
+    #reserve the same seat again
+    async def make_request():
+        async with httpx.AsyncClient(base_url=BASE_URL) as client:
+            return await send_reservation(client, event_id, seat_id)
+
+    status = asyncio.run(make_request())
+
+    assert status == 200
+
+    db = SessionLocalTest()
+
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+
+        old_reservation = (
+            db.query(Reservation)
+            .filter(Reservation.id == old_reservation_id)
+            .first()
+        )
+
+        all_reservations = (
+            db.query(Reservation)
+            .filter(Reservation.seat_id == seat_id)
+            .all()
+        )
+
+        held_reservations = [
+            r for r in all_reservations if r.status == "HELD"
+        ]
+
+        assert old_reservation.status == "EXPIRED"
+        assert seat.status == "HELD"
+        assert len(held_reservations) == 1
+        assert len(all_reservations) == 2
+
+    finally:
+        db.close()
+
+def test_active_hold_cannot_be_stolen():
+    event_id, seat_id, reservation_id = create_held_reservation(
+        expired=False
+    )
+
+    async def make_request():
+        async with httpx.AsyncClient(base_url=BASE_URL) as client:
+            return await send_reservation(client, event_id, seat_id)
+
+    status = asyncio.run(make_request())
+
+    assert status == 409
+
+    db = SessionLocalTest()
+
+    try:
+        seat = db.query(Seat).filter(Seat.id == seat_id).first()
+
+        reservation = (
+            db.query(Reservation)
+            .filter(Reservation.id == reservation_id)
+            .first()
+        )
+
+        assert seat.status == "HELD"
+        assert reservation.status == "HELD"
+
+    finally:
+        db.close()
