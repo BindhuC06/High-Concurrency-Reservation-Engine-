@@ -70,10 +70,17 @@ def confirm_reservation(
     reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
 
     if reservation is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Reservation not found"
-        )
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    
+    seat = db.query(Seat).filter(Seat.id == reservation.seat_id).with_for_update().first()
+
+    if seat is None:
+        raise HTTPException(status_code=404, detail="Seat not found")
+
+    reservation = db.query(Reservation).filter(Reservation.id == reservation_id).with_for_update().first()
+
+    if reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
 
     if reservation.status != "HELD":
         raise HTTPException(
@@ -81,20 +88,13 @@ def confirm_reservation(
             detail="Reservation cannot be confirmed"
         )
 
-    if reservation.expires_at and reservation.expires_at < datetime.utcnow():
+    if reservation.expires_at and reservation.expires_at <= datetime.utcnow():
+        reservation.status = "EXPIRED"
+        seat.status = "AVAILABLE"
+        db.commit()
         raise HTTPException(
             status_code=409,
             detail="Reservation hold has expired"
-        )
-
-    seat = db.query(Seat).filter(
-        Seat.id == reservation.seat_id
-    ).first()
-
-    if seat is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Seat not found"
         )
 
     seat.status = "BOOKED"
@@ -110,7 +110,30 @@ def cancel_reservation(
     reservation_id: uuid.UUID,
     db: Session = Depends(get_db)
 ):
-    reservation = db.query(Reservation).filter(Reservation.id == reservation_id).first()
+
+    reservation = db.query(Reservation).filter(
+        Reservation.id == reservation_id
+    ).first()
+
+    if reservation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Reservation not found"
+        )
+    
+    seat = db.query(Seat).filter(
+        Seat.id == reservation.seat_id
+    ).with_for_update().first()
+
+    if seat is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Seat not found"
+        )
+    
+    reservation = db.query(Reservation).filter(
+        Reservation.id == reservation_id
+    ).with_for_update().first()
 
     if reservation is None:
         raise HTTPException(
@@ -123,13 +146,14 @@ def cancel_reservation(
             status_code=409,
             detail="Reservation cannot be cancelled"
         )
+    if reservation.expires_at and reservation.expires_at <= datetime.utcnow():
+        reservation.status = "EXPIRED"
+        seat.status = "AVAILABLE"
+        db.commit()
 
-    seat = db.query(Seat).filter(Seat.id == reservation.seat_id).first()
-
-    if seat is None:
         raise HTTPException(
-            status_code=404,
-            detail="Seat not found"
+            status_code=409,
+            detail="Reservation hold has expired"
         )
 
     seat.status = "AVAILABLE"
